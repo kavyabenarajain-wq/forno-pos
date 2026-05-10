@@ -1,0 +1,14 @@
+# Local API keys — NEVER commit
+local-keys.json
+.env
+.env.local
+
+# OS / editor cruft
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Empty nested working dirs (have their own .git)
+forno-pos/
+posers/
