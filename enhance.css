@@ -3114,46 +3114,118 @@ h1, h2, h3 { letter-spacing: -0.015em; }
   .xr-stat:nth-child(n+3) { padding-top: 10px; }
   .xr-foot { flex-wrap: wrap; gap: 8px; }
 
-  /* ── Customer feed (mostly mobile-OK; tighten chrome) ── */
-  .cu-top { padding: 10px 14px; gap: 8px; }
-  .cu-brand.akane .cu-name.akane-title { font-size: 14px; letter-spacing: 0.24em; }
-  .cu-brand.akane .cu-sub { font-size: 8.5px; letter-spacing: 0.14em; }
-  .cu-logo.akane-logo { width: 36px; height: 36px; font-size: 8px; padding: 4px; }
-  .cu-search-row { flex-direction: column; gap: 8px; padding: 10px 14px; align-items: stretch; }
-  .cu-search input { width: 100%; }
+  /* ── Customer feed — compact mobile chrome so the dish gets the spotlight ── */
+
+  /* Header: ultra-compact; drop subtitle + smaller logo */
+  .cu-top {
+    padding: 6px 12px;
+    gap: 8px;
+    min-height: 0;
+  }
+  .cu-brand.akane { gap: 10px; }
+  .cu-brand.akane .cu-name.akane-title { font-size: 13px; letter-spacing: 0.20em; text-indent: 0.20em; }
+  .cu-brand.akane .cu-sub { display: none; }
+  .cu-logo.akane-logo { width: 30px; height: 30px; font-size: 7px; padding: 3px; }
+  .cu-top .btn.ghost { padding: 6px 10px; font-size: 11px; }
+
+  /* Search + Speak: side-by-side, mic becomes a 40px circle (icon only) */
+  .cu-search-row {
+    flex-direction: row;
+    gap: 8px;
+    padding: 8px 12px;
+    align-items: center;
+  }
+  .cu-search { flex: 1; min-width: 0; }
+  .cu-search input {
+    width: 100%;
+    height: 40px;
+    padding: 0 14px 0 36px;
+    font-size: 14px;
+  }
+  .cu-search .ico { left: 12px; }
+  .cu-mic {
+    height: 40px; width: 40px;
+    padding: 0;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    justify-content: center;
+    box-shadow: 0 4px 12px oklch(0.40 0.04 60 / 0.22);
+  }
+  .cu-mic .cu-mic-lbl { display: none; }
+  .cu-mic .cu-mic-ico { font-size: 17px; }
+
+  /* Heard transcript — compact one-liner */
+  .cu-listen {
+    margin: 0 12px 6px;
+    padding: 8px 12px;
+    gap: 8px;
+    border-radius: var(--r-md);
+  }
+  .cu-listen-lbl { font-size: 9px; letter-spacing: 0.10em; }
+  .cu-listen-text { font-size: 12.5px; line-height: 1.35; }
+  .cu-listen .btn.ghost { padding: 4px 10px; font-size: 11px; }
+
+  /* Categories: scrollable pill row */
   .cu-cats {
     display: flex; flex-wrap: nowrap; overflow-x: auto;
-    padding-bottom: 2px; gap: 6px;
+    padding: 2px 12px 8px;
+    gap: 6px;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
   }
   .cu-cats::-webkit-scrollbar { display: none; }
-  .cu-cat { flex: 0 0 auto; }
+  .cu-cat { flex: 0 0 auto; font-size: 12px; padding: 6px 12px; }
+
+  /* Feed: pad bottom to clear cart bar (60-72px) + safe area + breathing room */
   .cu-feed {
-    padding: 12px 12px calc(80px + env(safe-area-inset-bottom)) 12px;
+    padding: 8px 12px calc(120px + env(safe-area-inset-bottom)) 12px;
   }
   .cu-feed-card {
-    height: min(72vh, 600px);
-    min-height: 360px;
+    height: min(64vh, 560px);
+    min-height: 320px;
     max-width: 100%;
-    border-radius: 18px;
+    border-radius: 16px;
   }
   .cu-feed-name { font-size: 22px; }
   .cu-feed-desc { font-size: 12px; }
 
-  /* Mic / Speak button: keep large for thumb */
-  .cu-mic { padding: 0 18px; height: 48px; font-size: 13px; }
-
-  /* AR launch button on cards */
+  /* AR launch button on cards: small refined pill */
   .cu-ar-btn { font-size: 9px !important; padding: 5px 9px !important; }
 
-  /* Cart FAB position respects safe area */
-  .cu-cart-fab {
-    bottom: calc(16px + env(safe-area-inset-bottom)) !important;
-    right: 16px !important;
+  /* CART BAR: full-width pinned bottom bar (no centered pill on phones) */
+  .cu-cartbar {
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    transform: translateY(calc(100% + 24px));
+    min-width: 0;
+    width: auto;
+    border-radius: 14px;
+    padding: 8px 8px 8px 18px;
+    gap: 12px;
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.25);
   }
+  .cu-cartbar.show { transform: translateY(0); }
+  .cu-cartbar-info { gap: 0; flex: 1; min-width: 0; }
+  .cu-cartbar-count { font-size: 9.5px; letter-spacing: 0.10em; }
+  .cu-cartbar-total { font-size: 16px; }
+  .cu-cartbar .btn { padding: 10px 14px; font-size: 12px; flex: 0 0 auto; }
 
-  /* Concierge chat panel — full sheet on mobile */
+  /* CONCIERGE FAB: floats ABOVE the cart bar, icon-only circle so it never
+     fights the cart bar for horizontal space. 56px touch target. */
+  .cu-chat-fab {
+    bottom: calc(82px + env(safe-area-inset-bottom)) !important;
+    right: 14px !important;
+    padding: 0 !important;
+    width: 52px; height: 52px;
+    border-radius: 50% !important;
+    justify-content: center;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.30) !important;
+  }
+  .cu-chat-fab-lbl { display: none !important; }
+  .cu-chat-fab > span:first-child { font-size: 20px !important; }
+
+  /* Concierge chat panel: full-screen sheet on mobile */
   .cu-chat {
     width: 100vw !important;
     height: 100dvh !important;
@@ -3162,10 +3234,15 @@ h1, h2, h3 { letter-spacing: -0.015em; }
     border-radius: 0 !important;
     max-width: 100vw !important;
   }
-  .cu-chat-fab {
-    bottom: calc(16px + env(safe-area-inset-bottom)) !important;
-    right: 16px !important;
+
+  /* Prefill banner ("Welcome, Kavya. You're at table X") — keep tight */
+  .cu-prefill-banner {
+    padding: 8px 12px;
+    font-size: 12px;
+    gap: 8px;
   }
+  .cu-prefill-banner > div { font-size: 12px; line-height: 1.35; }
+  .cu-prefill-tag { font-size: 9px; padding: 2px 8px; }
 
   /* ── Lock banner ── */
   .cu-lock-banner {
