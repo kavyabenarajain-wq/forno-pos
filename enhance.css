@@ -2878,10 +2878,33 @@ h1, h2, h3 { letter-spacing: -0.015em; }
 
 @media (max-width: 768px) {
 
+  /* ── Critical: use dynamic viewport height (dvh) on iOS Safari.
+     Plain 100vh includes the URL-bar area, which pushes ~80px of content
+     off-screen and breaks scrolling inside fixed-height shells. dvh tracks
+     the actual visible viewport. Also disable html/body scroll so inner
+     panels (cu-feed, menu-grid, etc.) own the scroll. ── */
+  html, body { overflow: hidden; height: 100dvh; overscroll-behavior: none; }
+  #root { height: 100dvh; }
+
+  /* ── Tighten the global type ramp for phones — the user reported
+     everything looking 'clustered'. One-step font reduction on body so
+     every relative-sized element shrinks proportionally. ── */
+  body { font-size: 13px; }
+  .app[data-density="comfortable"] { font-size: 13px; }
+  .app[data-density="compact"] { font-size: 12px; }
+
   /* ── App shell: rail moves to bottom as tab bar ── */
   .app {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr 64px;
+    grid-template-rows: 1fr 56px;
+    height: 100dvh;
+  }
+  .main {
+    /* Stop forcing 100vh — let the grid row size it (otherwise main
+       overflows the row by the rail height and content gets cropped) */
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
   }
   .rail {
     grid-row: 2;
@@ -2925,24 +2948,40 @@ h1, h2, h3 { letter-spacing: -0.015em; }
     grid-template-rows: 52px 1fr;
   }
 
-  /* ── Topbar: shrink, hide low-priority info ── */
+  /* ── Topbar: shrink hard, hide everything except title + clock + avatar ── */
   .topbar {
-    padding: 0 14px;
+    padding: 0 12px;
     gap: 8px;
+    overflow: hidden;
   }
-  .topbar h1 { font-size: 16px; letter-spacing: 0.02em; }
+  .topbar h1 {
+    font-size: 14px; letter-spacing: 0.02em;
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .topbar .crumb { display: none; }
-  .topbar .pill { font-size: 11px; padding: 3px 8px; }
-  .user-chip { padding: 3px 8px 3px 3px; }
-  .user-chip .role { display: none; }
-  .user-chip .name { font-size: 11px; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* Hide the command-palette ghost button on phones — Cmd+K isn't reachable anyway */
-  .topbar .btn.ghost > span:nth-child(2) { display: none; }
+  .topbar .pill { display: none; }
+  /* Hide the command-palette button entirely on phones (it has Cmd+K shortcut) */
+  .topbar .btn.ghost { display: none; }
+  /* Hide the "+ New Walk-In" primary button on phones (action lives elsewhere) */
+  .topbar .btn.primary { display: none; }
+  /* Clock stays visible — it's important info the user just complained about */
+  .topbar .clock { font-size: 12px; flex: 0 0 auto; }
+  /* User chip: avatar only, no text */
+  .user-chip { padding: 2px; gap: 0; flex: 0 0 auto; }
+  .user-chip .av { width: 32px; height: 32px; font-size: 12px; }
+  .user-chip .role, .user-chip .name { display: none; }
+  .user-chip > div:not(.av) { display: none; }
 
   /* ── Order screen: cats top (horizontal), menu middle, ticket bottom ── */
   .order-screen {
     grid-template-columns: 1fr;
-    grid-template-rows: 48px 1fr 38vh;
+    grid-template-rows: 44px 1fr 36vh;
+    height: 100%;
+    overflow: hidden;
   }
   .cats {
     border-right: 0;
@@ -2973,11 +3012,21 @@ h1, h2, h3 { letter-spacing: -0.015em; }
     font-size: 10px;
   }
 
-  .menu-toolbar { padding: 10px 12px 6px; }
+  .menu-toolbar { padding: 8px 12px 4px; flex-shrink: 0; }
+  .menu-area {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
   .menu-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    gap: 8px;
     padding: 4px 12px 12px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    flex: 1 1 0;
+    min-height: 0;
   }
   .menu-item { min-height: 116px; padding: 12px; }
   .menu-item .name { font-size: 13.5px; }
@@ -2987,6 +3036,16 @@ h1, h2, h3 { letter-spacing: -0.015em; }
   .ticket {
     border-left: 0;
     border-top: 1px solid var(--line);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .ticket-lines {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .ticket-tabs { display: flex; }
   .ticket-actions {
@@ -3041,6 +3100,14 @@ h1, h2, h3 { letter-spacing: -0.015em; }
   .method-grid { grid-template-columns: repeat(2, 1fr); }
   .pay-amount .val { font-size: 32px; }
   .numpad button { padding: 14px 0; font-size: 18px; }
+
+  /* ── Generic: every direct screen child of .main must scroll vertically.
+     Without this, screens with overflow-x scroll horizontally only and
+     content below the fold has no way to be reached. ── */
+  .main > *:not(.topbar) {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 
   /* ── Reports / KPIs ── */
   .reports { padding: 14px; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
@@ -3116,11 +3183,20 @@ h1, h2, h3 { letter-spacing: -0.015em; }
 
   /* ── Customer feed — compact mobile chrome so the dish gets the spotlight ── */
 
+  /* Critical: make the customer-app respect iOS Safari's actual viewport.
+     Without this, height: 100vh extends behind the URL bar and content
+     below scrolls off-screen with no way to reach it. */
+  .customer-app, .cu-status {
+    height: 100dvh;
+    min-height: 0;
+  }
+
   /* Header: ultra-compact; drop subtitle + smaller logo */
   .cu-top {
     padding: 6px 12px;
     gap: 8px;
     min-height: 0;
+    flex-shrink: 0;
   }
   .cu-brand.akane { gap: 10px; }
   .cu-brand.akane .cu-name.akane-title { font-size: 13px; letter-spacing: 0.20em; text-indent: 0.20em; }
@@ -3134,6 +3210,7 @@ h1, h2, h3 { letter-spacing: -0.015em; }
     gap: 8px;
     padding: 8px 12px;
     align-items: center;
+    flex-shrink: 0;
   }
   .cu-search { flex: 1; min-width: 0; }
   .cu-search input {
@@ -3160,6 +3237,7 @@ h1, h2, h3 { letter-spacing: -0.015em; }
     padding: 8px 12px;
     gap: 8px;
     border-radius: var(--r-md);
+    flex-shrink: 0;
   }
   .cu-listen-lbl { font-size: 9px; letter-spacing: 0.10em; }
   .cu-listen-text { font-size: 12.5px; line-height: 1.35; }
@@ -3172,12 +3250,19 @@ h1, h2, h3 { letter-spacing: -0.015em; }
     gap: 6px;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    flex-shrink: 0;
   }
   .cu-cats::-webkit-scrollbar { display: none; }
   .cu-cat { flex: 0 0 auto; font-size: 12px; padding: 6px 12px; }
 
-  /* Feed: pad bottom to clear cart bar (60-72px) + safe area + breathing room */
+  /* Feed: the only scrollable child of .customer-app on mobile.
+     flex: 1 1 0 + min-height: 0 lets it shrink to fit available space
+     instead of pushing siblings off-screen. */
   .cu-feed {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding: 8px 12px calc(120px + env(safe-area-inset-bottom)) 12px;
   }
   .cu-feed-card {
