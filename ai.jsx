@@ -80,26 +80,233 @@ window.AI = {
   }
 })();
 
-// ── Web Speech API hook ─────────────────────────────────────────────────────
+// ── Menu-vocabulary autocorrect ─────────────────────────────────────────────
+// Even with a good STT model, Indian-accented English + Japanese culinary
+// terms produce systematic mishearings ("march" → "matcha", "tongue coats"
+// → "tonkotsu"). Two-pass correction: (1) exact direct mappings of the most
+// common confusions, (2) token-level edit-distance fallback against the menu
+// lexicon. Applied to every transcript regardless of which STT backend ran.
+
+const MENU_VOCAB = [
+  // Japanese dish / ingredient terms a guest might say
+  'matcha','tonkotsu','omakase','edamame','hamachi','takoyaki','wagyu','tataki',
+  'ikura','agedashi','tofu','chawanmushi','otoro','chirashi','sukiyaki','unagi',
+  'saikyo','ebi','tempura','katsu','teriyaki','yakitori','mochi','anmitsu',
+  'kuromitsu','brulee','hibiki','junmai','daiginjo','sake','yuzu','sakura',
+  'mojito','hojicha','genmaicha','asahi','sapporo','ramune','dashi','ajitama',
+  'nori','shiso','sashimi','nigiri','tartare','highball','cheesecake','tiramisu',
+  'ponzu','kewpie','sansho','miso','ramen','don','bowl','platter',
+];
+
+// Direct mishearing → correct map. Whole-word, case-insensitive. Order
+// matters only for multi-word entries (longer ones first via length sort).
+const MENU_MISHEAR_MAP = {
+  // matcha
+  'march': 'matcha', 'marcha': 'matcha', 'marsha': 'matcha', 'matter': 'matcha',
+  'marcia': 'matcha', 'matchya': 'matcha', 'macha': 'matcha',
+  // tonkotsu
+  'tongue coats': 'tonkotsu', 'ton coats': 'tonkotsu', 'tom coats': 'tonkotsu',
+  'tongue kotsu': 'tonkotsu', 'tonkostu': 'tonkotsu', 'tom kotsu': 'tonkotsu',
+  'donkatsu': 'tonkotsu', 'tonk hotsu': 'tonkotsu',
+  // omakase
+  'oma case': 'omakase', 'om kase': 'omakase', 'omikase': 'omakase',
+  'oh ma kase': 'omakase',
+  // edamame
+  'edam ami': 'edamame', 'edamamy': 'edamame', 'edam amy': 'edamame',
+  'idamame': 'edamame',
+  // hamachi
+  'ham archy': 'hamachi', 'hammachi': 'hamachi', 'ham archi': 'hamachi',
+  // takoyaki
+  'taco yaki': 'takoyaki', 'taka yaki': 'takoyaki', 'tako yucky': 'takoyaki',
+  // wagyu / tataki
+  'wagu': 'wagyu', 'waghu': 'wagyu', 'wagyou': 'wagyu',
+  'tata key': 'tataki', 'tataaki': 'tataki',
+  // ikura / agedashi / chawanmushi
+  'icra': 'ikura', 'ikra': 'ikura', 'i cura': 'ikura',
+  'aged ashi': 'agedashi', 'agedaashi': 'agedashi',
+  'chawan moosi': 'chawanmushi', 'chavan mushi': 'chawanmushi',
+  // otoro / chirashi / sukiyaki
+  'oh toro': 'otoro', 'otorro': 'otoro',
+  'chee rashi': 'chirashi', 'cheerashi': 'chirashi',
+  'sukey yaki': 'sukiyaki', 'suki yucky': 'sukiyaki',
+  // unagi / saikyo / katsu / teriyaki
+  'oonagi': 'unagi', 'unaghi': 'unagi', 'u nagi': 'unagi',
+  'saicho': 'saikyo', 'saiko': 'saikyo', 'sai cho': 'saikyo',
+  'kotsu': 'katsu', 'cuts': 'katsu', 'kuts': 'katsu',
+  'teri yucky': 'teriyaki', 'terry yucky': 'teriyaki',
+  // yakitori / mochi / anmitsu / brulee
+  'yaki tory': 'yakitori', 'yaki tori': 'yakitori',
+  'mochee': 'mochi', 'mocky': 'mochi',
+  'an mitsu': 'anmitsu', 'anmitzu': 'anmitsu',
+  'bro lay': 'brûlée', 'brulay': 'brûlée', 'broolay': 'brûlée',
+  // sake / yuzu / sakura / hojicha / genmaicha
+  'saa key': 'sake', 'sakey': 'sake',
+  'you zoo': 'yuzu', 'youzu': 'yuzu', 'use zoo': 'yuzu',
+  'sakoora': 'sakura', 'sak oora': 'sakura',
+  'hodgi cha': 'hojicha', 'hodge eecha': 'hojicha', 'hodjicha': 'hojicha',
+  'gen my cha': 'genmaicha', 'gen mai cha': 'genmaicha', 'gen ma cha': 'genmaicha',
+  // brands often misheard
+  'a sahi': 'asahi', 'asaahi': 'asahi',
+  'sapora': 'sapporo', 'sappora': 'sapporo',
+  'ramoonay': 'ramune', 'ra mooney': 'ramune',
+  'hi beaky': 'hibiki', 'hib eki': 'hibiki',
+  'jun my': 'junmai', 'jun maai': 'junmai',
+  'daigingo': 'daiginjo', 'die gingo': 'daiginjo',
+  // generic
+  'pun zoo': 'ponzu', 'kew pee': 'kewpie',
+};
+
+function _editDistance(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = new Array(n + 1);
+  let cur = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    [prev, cur] = [cur, prev];
+  }
+  return prev[n];
+}
+
+function applyMenuAutocorrect(text) {
+  if (!text) return text;
+  let out = text;
+  // Pass 1: direct mishearing map (longest phrases first so multi-word
+  // entries beat single-word substrings of themselves).
+  const entries = Object.entries(MENU_MISHEAR_MAP).sort((a, b) => b[0].length - a[0].length);
+  for (const [wrong, right] of entries) {
+    const esc = wrong.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('\\b' + esc + '\\b', 'gi');
+    out = out.replace(re, right);
+  }
+  // Pass 2: token-level edit-distance to the menu lexicon. Only kicks in for
+  // 4+-letter alphabetic tokens that aren't already an exact menu term.
+  // Tight threshold (≤2 edits AND length-similar) so we don't mangle normal
+  // English. Replacement preserves the original word's capitalization.
+  return out.replace(/[A-Za-z]+/g, (word) => {
+    if (word.length < 4) return word;
+    const lc = word.toLowerCase();
+    if (MENU_VOCAB.includes(lc)) return word;
+    let best = null, bestDist = 99;
+    for (const v of MENU_VOCAB) {
+      if (Math.abs(v.length - lc.length) > 2) continue;
+      const d = _editDistance(lc, v);
+      if (d < bestDist) { bestDist = d; best = v; }
+    }
+    const maxAllowed = Math.min(2, Math.floor(lc.length / 3));
+    if (best && bestDist > 0 && bestDist <= maxAllowed) {
+      // Preserve initial capitalization
+      return /^[A-Z]/.test(word) ? best.charAt(0).toUpperCase() + best.slice(1) : best;
+    }
+    return word;
+  });
+}
+
+// Builds the bias prompt sent to Azure transcribe — gives the model menu
+// vocabulary up front so it favors "matcha" over "march", etc.
+function buildMenuPrompt() {
+  const M = window.POS_DATA && window.POS_DATA.MENU;
+  const names = (M || []).map(m => m.name).filter(Boolean);
+  const vocab = [...new Set([...names, ...MENU_VOCAB])].join(', ');
+  return `Japanese restaurant order. Menu includes: ${vocab}. Indian-accented English is expected.`;
+}
+
+// ── Speech-to-text hook ─────────────────────────────────────────────────────
+// Two backends behind one interface:
+//   • Azure gpt-4o-transcribe — used when an Azure provider + key + endpoint
+//     + transcribeDeployment are all configured. Records via MediaRecorder,
+//     sends the blob with menu vocabulary as a bias prompt, applies menu
+//     autocorrect to the final transcript. Better for Indian accents and
+//     Japanese terms than the browser API.
+//   • Browser Web Speech API — fallback. Still pinned to en-IN locale and
+//     post-processed through the same menu autocorrect.
 function useSpeech({ onFinal } = {}) {
   const [supported] = React.useState(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    return !!SR;
+    if (window.SpeechRecognition || window.webkitSpeechRecognition) return true;
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
   });
   const [listening, setListening] = React.useState(false);
   const [transcript, setTranscript] = React.useState('');
   const [interim, setInterim] = React.useState('');
   const [error, setError] = React.useState(null);
-  const recRef = React.useRef(null);
+  const recRef = React.useRef(null);          // browser SpeechRecognition
+  const recorderRef = React.useRef(null);     // MediaRecorder
+  const streamRef = React.useRef(null);
+  const chunksRef = React.useRef([]);
   const onFinalRef = React.useRef(onFinal);
   onFinalRef.current = onFinal;
 
-  const start = React.useCallback(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
+  const azureReady = () => {
+    const c = loadAIConfig();
+    return c.provider === 'azure' && c.apiKey && c.endpoint && c.transcribeDeployment;
+  };
+
+  const startAzure = async () => {
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
+      setError('recorder not supported');
+      return;
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    streamRef.current = stream;
+    let mimeType = 'audio/webm';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'audio/mp4';
+    const recorder = new MediaRecorder(stream, { mimeType });
+    chunksRef.current = [];
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunksRef.current.push(e.data); };
+    recorder.onerror = () => { setError('recording error'); setListening(false); cleanupStream(); };
+    recorder.onstop = async () => {
+      setListening(false);
+      setInterim('');
+      cleanupStream();
+      const blob = new Blob(chunksRef.current, { type: mimeType });
+      chunksRef.current = [];
+      if (blob.size < 1200) return; // ignore <~0.1s clips
+      try {
+        const raw = await azureTranscribe(blob, { language: 'en', prompt: buildMenuPrompt() });
+        const corrected = applyMenuAutocorrect(raw.trim());
+        if (corrected) {
+          setTranscript(corrected);
+          onFinalRef.current && onFinalRef.current(corrected);
+        }
+      } catch (err) {
+        setError(err.message || 'transcribe error');
+      }
+    };
+    recorderRef.current = recorder;
+    recorder.start();
+    setListening(true);
+    setInterim('Listening…');
+  };
+
+  const cleanupStream = () => {
+    try { streamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
+    streamRef.current = null;
+  };
+
+  const start = React.useCallback(async () => {
     setError(null);
     setTranscript('');
     setInterim('');
+    // Prefer Azure if it's configured — better for Indian-English + Japanese terms.
+    if (azureReady()) {
+      try { await startAzure(); return; }
+      catch (e) {
+        setError(e.message || 'mic permission denied');
+        setListening(false);
+        cleanupStream();
+        return;
+      }
+    }
+    // Fallback: browser Web Speech API.
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { setError('speech not supported'); return; }
     const rec = new SR();
     rec.lang = 'en-IN';
     rec.continuous = true;
@@ -116,9 +323,10 @@ function useSpeech({ onFinal } = {}) {
         else interimText += r[0].transcript;
       }
       if (finalText) {
-        setTranscript(t => (t ? t + ' ' : '') + finalText.trim());
+        const corrected = applyMenuAutocorrect(finalText.trim());
+        setTranscript(t => (t ? t + ' ' : '') + corrected);
         setInterim('');
-        onFinalRef.current && onFinalRef.current(finalText.trim());
+        onFinalRef.current && onFinalRef.current(corrected);
       } else {
         setInterim(interimText);
       }
@@ -129,6 +337,11 @@ function useSpeech({ onFinal } = {}) {
 
   const stop = React.useCallback(() => {
     try { recRef.current?.stop(); } catch {}
+    try {
+      if (recorderRef.current && recorderRef.current.state === 'recording') {
+        recorderRef.current.stop();
+      }
+    } catch {}
   }, []);
 
   const reset = React.useCallback(() => {
@@ -137,7 +350,11 @@ function useSpeech({ onFinal } = {}) {
     setError(null);
   }, []);
 
-  React.useEffect(() => () => { try { recRef.current?.abort(); } catch {} }, []);
+  React.useEffect(() => () => {
+    try { recRef.current?.abort(); } catch {}
+    try { recorderRef.current?.stop(); } catch {}
+    cleanupStream();
+  }, []);
 
   return { supported, listening, transcript, interim, error, start, stop, reset };
 }
@@ -511,19 +728,22 @@ async function parseOrderWithAI(text, menu) {
   };
 }
 
-// Public: try AI first, fall back to heuristic.
+// Public: try AI first, fall back to heuristic. Menu autocorrect is applied
+// before either path runs, so typing "march latte" or saying "tongue coats"
+// is normalised to "matcha latte" / "tonkotsu" upstream.
 async function parseOrder(text, menu) {
+  const corrected = applyMenuAutocorrect(text || '');
   const cfg = loadAIConfig();
   if (cfg.apiKey) {
     try {
-      const r = await parseOrderWithAI(text, menu);
-      return { items: r.items, missing: r.missing, mode: 'ai' };
+      const r = await parseOrderWithAI(corrected, menu);
+      return { items: r.items, missing: r.missing, mode: 'ai', corrected };
     } catch (e) {
       console.warn('AI parse failed, falling back:', e.message);
-      return { items: parseOrderHeuristic(text, menu), missing: [], mode: 'heuristic', error: e.message };
+      return { items: parseOrderHeuristic(corrected, menu), missing: [], mode: 'heuristic', corrected, error: e.message };
     }
   }
-  return { items: parseOrderHeuristic(text, menu), missing: [], mode: 'heuristic' };
+  return { items: parseOrderHeuristic(corrected, menu), missing: [], mode: 'heuristic', corrected };
 }
 
 // ── Text-to-speech ─────────────────────────────────────────────────────────
@@ -861,4 +1081,4 @@ async function generateAngleVariants({ sourceImageUrl, dishName, count = 7, onPr
   return out;
 }
 
-Object.assign(window, { useSpeech, parseOrder, parseOrderHeuristic, chatWithAI, callAI, speak, cancelSpeak, azureTTS, azureTranscribe, loadAIConfig, saveAIConfig, generateAngleVariants, nanoBananaGenerate, loadImgGenConfig, saveImgGenConfig, searchPexels, fetchDishPhotosFromPexels, fetchDishPhotoFromWikipedia, autoFetchDishPhoto, getPexelsKey, setPexelsKey });
+Object.assign(window, { useSpeech, parseOrder, parseOrderHeuristic, chatWithAI, callAI, speak, cancelSpeak, azureTTS, azureTranscribe, applyMenuAutocorrect, buildMenuPrompt, loadAIConfig, saveAIConfig, generateAngleVariants, nanoBananaGenerate, loadImgGenConfig, saveImgGenConfig, searchPexels, fetchDishPhotosFromPexels, fetchDishPhotoFromWikipedia, autoFetchDishPhoto, getPexelsKey, setPexelsKey });

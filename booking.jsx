@@ -113,7 +113,7 @@ function CustomerWelcome({ onReserve, onLookup, onWalkIn, onBrowseMenu, onBackTo
 }
 
 // ── Reservation wizard — step 1: party + date + time ──────────────────────
-function BookingStep1({ partySize, setPartySize, arrivalAt, setArrivalAt, onNext, onBack }) {
+function BookingStep1({ partySize, setPartySize, arrivalAt, setArrivalAt, onNext, onBack, pickError }) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const dates = Array.from({ length: 14 }, (_, i) => {
     const d = new Date(today); d.setDate(today.getDate() + i); return d.getTime();
@@ -157,9 +157,9 @@ function BookingStep1({ partySize, setPartySize, arrivalAt, setArrivalAt, onNext
   return (
     <div className="bk-step">
       <div className="bk-step-head">
-        <div className="bk-step-num">1 / 3</div>
+        <div className="bk-step-num">1 / 2</div>
         <h2>How many, and when?</h2>
-        <div className="bk-step-sub">We'll show you live availability across the floor.</div>
+        <div className="bk-step-sub">Tell us the party size and time — we'll pick the best-fit table for you.</div>
       </div>
 
       <div className="bk-section">
@@ -217,126 +217,24 @@ function BookingStep1({ partySize, setPartySize, arrivalAt, setArrivalAt, onNext
         </div>
       </div>
 
+      {pickError && (
+        <div className="bk-info" style={{ borderColor: 'var(--danger)', background: 'var(--danger-soft)', color: 'var(--danger)' }}>
+          <span style={{ fontSize: 18 }}>⚠️</span>
+          <div>{pickError}</div>
+        </div>
+      )}
+
       <div className="bk-foot">
         <button className="btn" onClick={onBack}>← Back</button>
         <div style={{ flex: 1 }} />
         <button className="btn primary lg" disabled={!valid} onClick={onNext}>
-          Pick your table →
+          Continue →
         </button>
       </div>
     </div>
   );
 }
 
-// ── Step 2: 3D floor picker ───────────────────────────────────────────────
-// CSS-3D perspective tilt of the same coordinate space tables.jsx uses, so
-// the customer sees the actual floor layout, not a generic abstraction.
-function BookingFloor3D({ tableId, setTableId, partySize, arrivalAt, bookings, onNext, onBack }) {
-  const [tilt, setTilt] = React.useState(true);   // 3D vs flat toggle
-  const taken = React.useMemo(
-    () => unavailableTableIds(bookings, arrivalAt, partySize),
-    [bookings, arrivalAt, partySize]
-  );
-
-  // Tables that fit the party (must seat at least the party size, but not be huge)
-  const fitTable = (t) => t.seats >= partySize && t.seats <= partySize + 4;
-  const available = bkTABLES.filter(t => !taken.has(t.id) && fitTable(t));
-  const tooSmall = bkTABLES.filter(t => t.seats < partySize);
-
-  const sel = bkTABLES.find(t => t.id === tableId) || null;
-
-  // Auto-pick a sensible default (first available 2–3 seats over party size)
-  React.useEffect(() => {
-    if (!sel || taken.has(sel.id) || !fitTable(sel)) {
-      const best = available.sort((a, b) => Math.abs(a.seats - partySize) - Math.abs(b.seats - partySize))[0];
-      setTableId(best ? best.id : null);
-    }
-  }, [partySize, arrivalAt]);
-
-  return (
-    <div className="bk-step">
-      <div className="bk-step-head">
-        <div className="bk-step-num">2 / 3</div>
-        <h2>Pick your seat</h2>
-        <div className="bk-step-sub">{partySize} {partySize === 1 ? 'guest' : 'guests'} · {fmtDate(arrivalAt)} · {fmtTime(arrivalAt)}</div>
-      </div>
-
-      <div className="bk-floor-bar">
-        <div className="bk-floor-legend">
-          <span className="bk-l-dot avail" /> Available
-          <span className="bk-l-dot taken" /> Reserved
-          <span className="bk-l-dot small" /> Too small
-          <span className="bk-l-dot pick" /> Your pick
-        </div>
-        <div style={{ flex: 1 }} />
-        <button className={'bk-3d-toggle' + (tilt ? ' on' : '')} onClick={() => setTilt(t => !t)}>
-          {tilt ? '⬜ Top-down' : '🎲 3D View'}
-        </button>
-      </div>
-
-      <div className={'bk-floor3d-wrap' + (tilt ? ' tilted' : '')}>
-        <div className="bk-floor3d">
-          <div className="bk-floor3d-stage">
-            {bkFRAMES.map(s => (
-              <React.Fragment key={s.name}>
-                <div className="bk-3d-section" style={{ left: s.x, top: s.y, width: s.w, height: s.h }} />
-                <div className="bk-3d-section-lbl" style={{ left: s.x + 14, top: s.y - 6 }}>{s.name}</div>
-              </React.Fragment>
-            ))}
-            {bkTABLES.map(t => {
-              const isTaken = taken.has(t.id);
-              const isSmall = t.seats < partySize;
-              const isSel = tableId === t.id;
-              const cls = 'bk-3d-tbl'
-                + (t.shape === 'round' ? ' round' : '')
-                + (isTaken ? ' taken' : isSmall ? ' small' : ' avail')
-                + (isSel ? ' pick' : '');
-              return (
-                <button
-                  key={t.id}
-                  className={cls}
-                  style={{ left: t.x, top: t.y, width: t.w, height: t.h }}
-                  disabled={isTaken || isSmall}
-                  onClick={() => setTableId(t.id)}
-                  title={isTaken ? 'Reserved at this time' : isSmall ? `Seats ${t.seats} — too small for ${partySize}` : `Table ${t.id} · seats ${t.seats}`}
-                >
-                  <span className="bk-3d-tbl-num">{t.id}</span>
-                  <span className="bk-3d-tbl-seats">{t.seats}p</span>
-                  {isSel && <span className="bk-3d-tbl-check">✓</span>}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {sel && (
-        <div className="bk-pick-card">
-          <div className="bk-pick-icon">{sel.shape === 'round' ? '🔵' : '🟧'}</div>
-          <div style={{ flex: 1 }}>
-            <div className="bk-pick-name">Table {sel.id} · {sel.section}</div>
-            <div className="bk-pick-sub">Seats {sel.seats} · {sel.shape === 'round' ? 'Round' : 'Rectangular'}</div>
-          </div>
-          <div className="bk-pick-time">{fmtTime(arrivalAt)}</div>
-        </div>
-      )}
-      {!sel && available.length === 0 && (
-        <div className="bk-empty">
-          <div style={{ fontSize: 28 }}>🪑</div>
-          <div>No tables for {partySize} guests at this time. Try a different slot.</div>
-        </div>
-      )}
-
-      <div className="bk-foot">
-        <button className="btn" onClick={onBack}>← Back</button>
-        <div style={{ flex: 1 }} />
-        <button className="btn primary lg" disabled={!sel} onClick={onNext}>
-          Confirm details →
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ── Step 3: customer details ──────────────────────────────────────────────
 function BookingStep3({ name, setName, phone, setPhone, notes, setNotes, partySize, arrivalAt, tableId, onSubmit, onBack, busy }) {
@@ -345,7 +243,7 @@ function BookingStep3({ name, setName, phone, setPhone, notes, setNotes, partySi
   return (
     <div className="bk-step">
       <div className="bk-step-head">
-        <div className="bk-step-num">3 / 3</div>
+        <div className="bk-step-num">2 / 2</div>
         <h2>Almost there</h2>
         <div className="bk-step-sub">We'll text you when the restaurant approves your seat.</div>
       </div>
@@ -409,10 +307,22 @@ function BookingFlow({ bookings, onSubmit, onBack }) {
     return t.getTime();
   });
   const [tableId, setTableId] = React.useState(null);
+  const [pickError, setPickError] = React.useState(null);
   const [name, setName] = React.useState('');
   const [phone, setPhone] = React.useState('');
   const [notes, setNotes] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+
+  // Auto-assign the best-fit available table for the chosen slot.
+  // Replaces the per-customer 3D floor picker — guests just say "a
+  // table for N at 8pm" and we pick the closest-fitting empty one.
+  const pickBestTable = () => {
+    const taken = unavailableTableIds(bookings, arrivalAt, partySize);
+    const fits = bkTABLES
+      .filter(t => t.seats >= partySize && !taken.has(t.id))
+      .sort((a, b) => (a.seats - partySize) - (b.seats - partySize));
+    return fits[0]?.id || null;
+  };
 
   const submit = () => {
     setBusy(true);
@@ -445,7 +355,6 @@ function BookingFlow({ bookings, onSubmit, onBack }) {
         <div className="bk-progress">
           <div className={'bk-pip' + (step >= 1 ? ' on' : '')} />
           <div className={'bk-pip' + (step >= 2 ? ' on' : '')} />
-          <div className={'bk-pip' + (step >= 3 ? ' on' : '')} />
         </div>
       </header>
 
@@ -454,24 +363,28 @@ function BookingFlow({ bookings, onSubmit, onBack }) {
           <BookingStep1
             partySize={partySize} setPartySize={setPartySize}
             arrivalAt={arrivalAt} setArrivalAt={setArrivalAt}
-            onNext={() => setStep(2)} onBack={onBack}
+            onNext={() => {
+              const t = pickBestTable();
+              if (t == null) {
+                setPickError(`No tables available for ${partySize} ${partySize === 1 ? 'guest' : 'guests'} at this time. Please try a different slot.`);
+                setTimeout(() => setPickError(null), 4000);
+                return;
+              }
+              setTableId(t);
+              setPickError(null);
+              setStep(2);
+            }}
+            onBack={onBack}
+            pickError={pickError}
           />
         )}
         {step === 2 && (
-          <BookingFloor3D
-            tableId={tableId} setTableId={setTableId}
-            partySize={partySize} arrivalAt={arrivalAt}
-            bookings={bookings}
-            onNext={() => setStep(3)} onBack={() => setStep(1)}
-          />
-        )}
-        {step === 3 && (
           <BookingStep3
             name={name} setName={setName}
             phone={phone} setPhone={setPhone}
             notes={notes} setNotes={setNotes}
             partySize={partySize} arrivalAt={arrivalAt} tableId={tableId}
-            onSubmit={submit} onBack={() => setStep(2)} busy={busy}
+            onSubmit={submit} onBack={() => setStep(1)} busy={busy}
           />
         )}
       </div>
