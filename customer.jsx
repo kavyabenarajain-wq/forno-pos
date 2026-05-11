@@ -151,11 +151,15 @@ function CustomerApp({ onBackToRole, onSubmitOrder, myOrder, onSwitchRole, prefi
   };
 
   const filtered = React.useMemo(() => {
+    // VR/3D-enabled items float to the top of every list so demo viewers
+    // see the showpieces first. Array.prototype.sort is stable, so the
+    // curated MENU order is preserved inside each group.
+    const sortVR = (a, b) => Number(!!window.POS_DATA.modelFor(b.id)) - Number(!!window.POS_DATA.modelFor(a.id));
     if (search.trim()) {
       const q = search.toLowerCase();
-      return cuMENU.filter(x => x.name.toLowerCase().includes(q) || (x.desc || '').toLowerCase().includes(q)).slice(0, 30);
+      return cuMENU.filter(x => x.name.toLowerCase().includes(q) || (x.desc || '').toLowerCase().includes(q)).slice(0, 30).sort(sortVR);
     }
-    return cuMENU.filter(x => x.cat === activeCat);
+    return cuMENU.filter(x => x.cat === activeCat).sort(sortVR);
   }, [activeCat, search]);
 
   // Guests browsing before their reservation window is open can preview the
