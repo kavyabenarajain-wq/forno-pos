@@ -318,7 +318,7 @@ const MODELS = {
   za02: 'hamachi.glb?v=2',       // Hamachi Crudo
   sh04: 'unagi-don.glb',         // Unagi Don
   sh06: 'tonkotsu.glb?v=2',      // Tonkotsu Ramen
-  km02: 'mochi%20.glb',          // Mochi Ice Cream Trio (filename has a space)
+  km02: 'mochi%20ice%20cream.glb',  // Mochi Ice Cream Trio
   nm05: 'matcha-latte.glb',      // Iced Matcha Latte
 };
 const modelFor = (id) => MODELS[id] || null;
